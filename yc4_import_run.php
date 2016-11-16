@@ -292,6 +292,7 @@ document.onkeydown = noRefresh ;
         // event table 복사
         $sql = " select * from {$g4['yc4_event_table']} ";
         $result = sql_query($sql);
+		$excl_fld = array('it_group');//it_group 제외 추가[2015-03-30]
         for($i=0; $row=sql_fetch_array($result); $i++) {
             if($is_euckr)
                 $row = array_map('iconv_utf8', $row);
@@ -300,6 +301,11 @@ document.onkeydown = noRefresh ;
             $sql_common = '';
 
             foreach($row as $key=>$val) {
+
+				//필드항목 제외로 추가[2015-03-30]
+                if(in_array($key, $excl_fld))
+                    continue;
+
                 if($key == 'ev_id')
                     continue;
 
@@ -421,14 +427,15 @@ document.onkeydown = noRefresh ;
                 $comma = ',';
             }
 
-            sql_query(" INSERT INTO {$g5['g5_shop_category_table']} SET $sql_common, ca_skin = 'list.10.skin.php' ");
+            //카테고리 세팅값 일부 추가[2015-03-30]
+			sql_query(" INSERT INTO {$g5['g5_shop_category_table']} SET $sql_common, ca_skin = 'list.10.skin.php', ca_mobile_skin = 'list.10.skin.php', ca_skin_dir = 'theme/basic', ca_mobile_skin_dir = 'theme/basic', ca_mobile_img_width = '240', ca_mobile_img_height = '240', ca_mobile_list_mod = '2', ca_mobile_list_row = '5'  ");
         }
         echo '<li>category table 복사</li>'.PHP_EOL;
 
         // item table 복사
         $sql = " select * from {$g4['yc4_item_table']} ";
         $result = sql_query($sql);
-        $excl_fld = array('it_opt1_subject', 'it_opt2_subject', 'it_opt3_subject', 'it_opt4_subject', 'it_opt5_subject', 'it_opt6_subject', 'it_opt1', 'it_opt2', 'it_opt3', 'it_opt4', 'it_opt5', 'it_opt6', 'it_amount2', 'it_amount3', 'it_gallery', 'it_explan_html');
+        $excl_fld = array('it_opt1_subject', 'it_opt2_subject', 'it_opt3_subject', 'it_opt4_subject', 'it_opt5_subject', 'it_opt6_subject', 'it_opt1', 'it_opt2', 'it_opt3', 'it_opt4', 'it_opt5', 'it_opt6', 'it_amount2', 'it_amount3', 'it_amount4', 'it_gallery', 'it_explan_html', 'it_info_type', 'it_info1_subject', 'it_info2_subject', 'it_info3_subject', 'it_info4_subject', 'it_info5_subject', 'it_info6_subject', 'it_info7_subject', 'it_info8_subject', 'it_info9_subject', 'it_info10_subject', 'it_info11_subject', 'it_info12_subject', 'it_info13_subject', 'it_info14_subject', 'it_info1', 'it_info2', 'it_info3', 'it_info4', 'it_info5', 'it_info6', 'it_info7', 'it_info8', 'it_info9', 'it_info10', 'it_info11', 'it_info12', 'it_info13', 'it_info14', 'it_buy_level', 'it_thumbnail', 'it_update_time');
         for($i=0; $row=sql_fetch_array($result); $i++) {
             if($is_euckr)
                 $row = array_map('iconv_utf8', $row);
@@ -445,6 +452,14 @@ document.onkeydown = noRefresh ;
 
                 if($key == 'it_cust_amount')
                     $key = 'it_cust_price';
+
+				//공급처 코드 변환 추가[2015-03-29]
+				if($key == 'it_supplier_code')
+					$key = 'it_supplier_id';
+
+				//상품판매 수량 변환 추가[2015-03-29]
+				if($key == 'it_order')
+					$key = 'it_sum_qty';
 
                 $sql_common .= $comma . " $key = '".addslashes($val)."' ";
 
@@ -491,7 +506,7 @@ document.onkeydown = noRefresh ;
                 }
             }
 
-            sql_query(" INSERT INTO {$g5['g5_shop_item_table']} SET $sql_common ");
+            sql_query(" INSERT INTO {$g5['g5_shop_item_table']} SET $sql_common, it_point_type = '2', it_skin = 'theme/basic', it_mobile_skin = 'theme/basic' ");//포인트 타입 스킨 지정 추가[2015-03-30]
 
             // 사용후기의 확인된 건수를 상품테이블에 저장
             update_use_cnt($row['it_id']);
@@ -531,8 +546,19 @@ document.onkeydown = noRefresh ;
                 $od_receipt_time = $row['od_hp_time'];
 
             // 배송정보
-            $od_status = '주문';
-            $od_delivery_company = '';
+			//주문상태 장바구니 기준으로 적용 추가[2016-11-14]
+			$cart_sql = " select * from {$g4['yc4_cart_table']} a, {$g4['yc4_order_table']} b where a.on_uid = b.on_uid and a.on_uid = '{$row['on_uid']}' ";
+			$cart_result = sql_query($cart_sql);
+			for($t=0; $cart_row=sql_fetch_array($cart_result); $t++)
+				{
+				$od_status = $cart_row['ct_status'];
+
+			$od_delivery_company = '';
+            if($row['dl_id'] && $row['od_invoice'] && $cart_row['ct_status'] <> "완료") {
+                $od_status = '반품';
+			}else
+			//주문상태 장바구니 기준으로 적용 끝
+
             if($row['dl_id'] && $row['od_invoice']) {
                 $dl = sql_fetch(" select dl_company from {$g4['yc4_delivery_table']} where dl_id = '{$row['dl_id']}' ");
                 $od_delivery_company = addslashes($dl['dl_company']);
@@ -543,6 +569,7 @@ document.onkeydown = noRefresh ;
             $sql_common .= $comma . " od_receipt_price = '$od_receipt_price', od_refund_price = '$od_refund_price', od_status = '$od_status', od_delivery_company = '$od_delivery_company', od_receipt_time = '$od_receipt_time' ";
 
             sql_query(" INSERT INTO {$g5['g5_shop_order_table']} SET $sql_common ");
+			}
 
             // 장바구니자료복사
             $sql2 = " select * from {$g4['yc4_cart_table']} where on_uid = '{$row['on_uid']}' ";
@@ -558,6 +585,10 @@ document.onkeydown = noRefresh ;
                 foreach($row2 as $key=>$val) {
                     if(in_array($key, $excl_fld2))
                         continue;
+
+				//공급처 코드 변환 추가[2015-03-29]
+				if($key == 'it_supplier_code')
+					$key = 'ct_supplier_id';
 
                     $sql_common2 .= $comma . " $key = '".addslashes($val)."' ";
 
@@ -584,7 +615,7 @@ document.onkeydown = noRefresh ;
                 if($ct_option)
                     $ct_option = addslashes($ct_option);
 
-                $sql_common2 .= $comma . " ct_price = '$ct_price', it_name = '$it_name', ct_option = '$ct_option' ";
+                $sql_common2 .= $comma . " ct_price = '$ct_price', it_name = '$it_name', ct_option = '$ct_option', mb_id = '$row[mb_id]' ";
 
                 sql_query(" INSERT INTO {$g5['g5_shop_cart_table']} SET od_id = '$od_id', $sql_common2 , ct_select = '1' ");
             }
@@ -639,6 +670,38 @@ document.onkeydown = noRefresh ;
             sql_query(" INSERT INTO {$g5['g5_shop_wish_table']} SET $sql_common ");
         }
         echo '<li>event item table 복사</li>'.PHP_EOL;
+
+		// supplier table 복사 추가[2015-03-30]
+        $sql = " select * from {$g4['yc4_item_supplier_table']} ";
+        $result = sql_query($sql);
+        for($i=0; $row=sql_fetch_array($result); $i++) {
+            if($is_euckr)
+                $row = array_map('iconv_utf8', $row);
+
+            $comma = '';
+            $sql_common = '';
+
+            foreach($row as $key=>$val) {
+                if($key == 'supplier_id')
+                    continue;
+
+				if($key == 'it_supplier_code')
+					$key = 'supplier_id';
+
+				if($key == 'it_supplier_name')
+					$key = 'supplier_name';
+
+				if($key == 'supplier_datetime')
+					$key = 'supplier_time';
+
+				$sql_common .= $comma . " $key = '".addslashes($val)."' ";
+
+                $comma = ',';
+            }
+
+            sql_query(" INSERT INTO {$g5['g5_shop_supplier_table']} SET $sql_common ");
+        }
+        echo '<li>supplier table 복사</li>'.PHP_EOL;
 
         echo '</ol>'.PHP_EOL;
 
